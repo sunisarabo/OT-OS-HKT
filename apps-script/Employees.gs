@@ -49,6 +49,21 @@ function teamDisplayName_(teamCode) {
   return teamCode || '(ไม่ระบุทีม)';
 }
 
+/**
+ * หา teamCode ของ record — ถ้าชีทไม่แมปเป็นทีม (ว่าง/UNKNOWN) ให้เปิดจาก master ด้วย empId
+ * @param {Object} r record
+ * @param {Object} master ผลของ getMasterEmployees()
+ */
+function resolveTeamCode_(r, master) {
+  var tc = r.team ? (normalizeTeamCode(r.team) || String(r.team)) : '';
+  if (!tc || tc === 'UNKNOWN') {
+    var id = String(r.empId == null ? '' : r.empId).replace(/\.0+$/, '').trim();
+    var me = (id && master && master.byId) ? master.byId[id] : null;
+    if (me && me.teamCode) tc = me.teamCode;
+  }
+  return tc || 'UNKNOWN';
+}
+
 /** สัปดาห์ของเดือนจากเลขวัน: 1-7,8-14,15-21,22+ */
 function emp3WeekIndex_(day) {
   if (day <= 7) return 0;
@@ -64,6 +79,7 @@ function emp3WeekIndex_(day) {
  */
 function getEmployeeReport3(startDate, endDate, attendanceOpt) {
   var attendance = attendanceOpt || readAttendance(startDate, endDate);
+  var master = getMasterEmployees();
   var report = {};
   var monthOrder = {};
   var seenEmp = {};
@@ -74,7 +90,7 @@ function getEmployeeReport3(startDate, endDate, attendanceOpt) {
     var d = (r.date instanceof Date) ? r.date : new Date(r.date);
     if (isNaN(d)) return;
 
-    var teamCode = r.team ? (normalizeTeamCode(r.team) || r.team) : 'UNKNOWN';
+    var teamCode = resolveTeamCode_(r, master);
     var dept = dept3ForTeam_(teamCode);
     var mk = EMP3_MON_ABBR[d.getMonth()] + ' ' + d.getFullYear();
     monthOrder[mk] = d.getFullYear() * 100 + d.getMonth();
@@ -177,10 +193,11 @@ function diagTeams3() {
   var end = new Date(); end.setDate(end.getDate() - 1);
   var start = new Date(end.getTime() - 2 * 86400000);
   var att = readAttendance(start, end);
+  var master = getMasterEmployees();
   Logger.log('records: ' + (att ? att.length : 0) + '  ช่วง ' + formatDate(start, 'yyyy-MM-dd') + ' ถึง ' + formatDate(end, 'yyyy-MM-dd'));
   var by = {};
   (att || []).forEach(function (r) {
-    var tc = r.team ? (normalizeTeamCode(r.team) || r.team) : 'UNKNOWN';
+    var tc = resolveTeamCode_(r, master);
     if (!by[tc]) by[tc] = { rec: 0, ot: 0, dept: dept3ForTeam_(tc), raw: {} };
     by[tc].rec++;
     if ((+r.otHrs || 0) > 0) by[tc].ot++;
