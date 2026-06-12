@@ -24,6 +24,10 @@ var DEPT3_DEFS = [
 ];
 var EMP3_MON_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
+// ไฟล์ OT ของ LL (pivot รายคนรายวัน — ชีต "PA") — ใช้แทน roster รายวันที่ระบบเดิมหาไม่เจอ
+// ⚠️ ต้องแชร์ไฟล์นี้ให้บัญชีที่รัน Web App ด้วย
+var LL_OT_FILE_ID = '1i2c41P5zzHrvvzpJp7RJ9IT349fbWbk4jJMeb0lD5jE';
+
 /** teamCode (Config) -> 'KP' | 'LP' | 'LL' */
 function dept3ForTeam_(teamCode) {
   var t = String(teamCode || '').toUpperCase().trim();
@@ -80,6 +84,8 @@ function emp3WeekIndex_(day) {
 function getEmployeeReport3(startDate, endDate, attendanceOpt) {
   var attendance = attendanceOpt || readAttendance(startDate, endDate);
   var master = getMasterEmployees();
+  var llRecs = _readLLPivotRecords(startDate, endDate, master);   // LL จากไฟล์ pivot แยก
+  if (llRecs && llRecs.length) attendance = (attendance || []).concat(llRecs);
   var report = {};
   var monthOrder = {};
   var seenEmp = {};
@@ -245,5 +251,111 @@ function diagTeams3() {
   Object.keys(by).sort(function (a, b) { return by[a].dept < by[b].dept ? -1 : 1; }).forEach(function (tc) {
     var b = by[tc];
     Logger.log(b.dept + ' | ' + tc + ' | rec ' + b.rec + ' | OT ' + b.ot + ' | raw=' + Object.keys(b.raw).join(' , '));
+  });
+}
+
+// ════════════════════════════════════════════════════════════════
+// LL — อ่าน OT รายคนจากไฟล์ pivot (ชีต "PA") ของ LL_OT_FILE_ID
+// คืน pseudo-records [{date, empId, empName, team, otHrs}] ให้รวมกับ attendance
+// ════════════════════════════════════════════════════════════════
+function _llHrs_(v) {
+  if (v == null || v === '') return 0;
+  if (v instanceof Date) return v.getHours() + v.getMinutes() / 60 + v.getSeconds() / 3600;
+  if (typeof v === 'number') return v * 24;                 // Excel time fraction
+  var s = String(v).trim(); if (!s || s === '-') return 0;
+  var m = s.match(/^(\d+):(\d+)(?::(\d+))?$/);
+  if (m) return (+m[1]) + (+m[2]) / 60 + ((+m[3]) || 0) / 3600;
+  var n = parseFloat(s); return isNaN(n) ? 0 : n;
+}
+function _emp3Strip_(d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+
+function _readLLPivotRecords(startDate, endDate, master) {
+  var out = [];
+  if (!LL_OT_FILE_ID) return out;
+  try {
+    var ss = SpreadsheetApp.openById(LL_OT_FILE_ID);
+    var sheets = ss.getSheets(), sh = null;
+    for (var i = 0; i < sheets.length; i++) {
+      var nm = sheets[i].getName();
+      if (nm.indexOf('PA') === 0 || nm.indexOf('ห้ามแก้') >= 0) { sh = sheets[i]; break; }
+    }
+    if (!sh) {                                              // fallback: หา sheet ที่มี header
+      for (var j = 0; j < sheets.length; j++) {
+        var v0 = sheets[j].getDataRange().getValues();
+        for (var r0 = 0; r0 < Math.min(6, v0.length); r0++) {
+          if (v0[r0].indexOf('รหัสพนักงาน') >= 0) { sh = sheets[j]; break; }
+        }
+        if (sh) break;
+      }
+    }
+    if (!sh) return out;
+
+    var v = sh.getDataRange().getValues();
+    var hr = -1, codeCol = -1, nameCol = -1;
+    for (var r = 0; r < Math.min(8, v.length); r++) {
+      var idx = v[r].indexOf('รหัสพนักงาน');
+      if (idx >= 0) { hr = r; codeCol = idx; var ni = v[r].indexOf('ชื่อ - สกุล'); nameCol = ni >= 0 ? ni : codeCol + 1; break; }
+    }
+    if (hr < 0) return out;
+
+    var dayCols = [];                                       // {hrsCol, date} — Hrs อยู่คอลัมน์ถัดจากวันที่
+    for (var c = 0; c < v[hr].length; c++) {
+      var mm = String(v[hr][c] || '').match(/(\d{1,2})\/(\d{1,2})\/(\d{4})-\d/);
+      if (mm) dayCols.push({ hrsCol: c + 1, date: new Date(+mm[3], +mm[2] - 1, +mm[1]) });
+    }
+    var start = _emp3Strip_(startDate), end = _emp3Strip_(endDate);
+    for (var rr = hr + 1; rr < v.length; rr++) {
+      var code = String(v[rr][codeCol] == null ? '' : v[rr][codeCol]).split('.')[0].trim();
+      if (!/^\d{6,8}$/.test(code)) continue;
+      var name = String(v[rr][nameCol] || '').trim();
+      var me = (master && master.byId) ? master.byId[code] : null;
+      var team = (me && me.teamCode) ? me.teamCode : 'LOST_AND_FOUND';
+      for (var k = 0; k < dayCols.length; k++) {
+        var d = dayCols[k].date;
+        if (d < start || d > end) continue;
+        var hrs = _llHrs_(v[rr][dayCols[k].hrsCol]);
+        if (hrs > 0) out.push({ date: d, empId: code, empName: name, team: team, otHrs: hrs });
+      }
+    }
+  } catch (e) { Logger.log('LL pivot read failed: ' + e.message); }
+  return out;
+}
+
+// ════════════════════════════════════════════════════════════════
+// PRECOMPUTE หลายเดือน + TRIGGER รายคืน
+// ════════════════════════════════════════════════════════════════
+/** precache เดือนปัจจุบัน + เดือนก่อนหน้า (ใช้กับ trigger รายคืน — อยู่ในลิมิต 30 นาที) */
+function nightlyPrecache3() {
+  var t = new Date();
+  var cur = t.getFullYear() + '-' + ('0' + (t.getMonth() + 1)).slice(-2);
+  var p = new Date(t.getFullYear(), t.getMonth() - 1, 1);
+  var prev = p.getFullYear() + '-' + ('0' + (p.getMonth() + 1)).slice(-2);
+  [prev, cur].forEach(function (mk) {
+    try { precacheMonth3(mk); } catch (e) { Logger.log('nightlyPrecache3 ' + mk + ': ' + e.message); }
+  });
+}
+
+/** precache ย้อนหลัง n เดือน (รันมือเพื่อ backfill — ระวังลิมิต 30 นาที, แนะนำ n<=2 ต่อครั้ง) */
+function precacheRecentMonths3(n) {
+  n = n || 2;
+  var t = new Date(), done = [];
+  for (var i = 0; i < n; i++) {
+    var d = new Date(t.getFullYear(), t.getMonth() - i, 1);
+    var mk = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2);
+    try { precacheMonth3(mk); done.push(mk); } catch (e) { Logger.log('precacheRecentMonths3 ' + mk + ': ' + e.message); }
+  }
+  Logger.log('precacheRecentMonths3 done: ' + done.join(', '));
+  return done;
+}
+
+/** ติดตั้ง trigger รันทุกคืน ~02:00 (ลบของเดิมก่อนกันซ้ำ) */
+function installNightlyTrigger3() {
+  removeNightlyTrigger3();
+  ScriptApp.newTrigger('nightlyPrecache3').timeBased().everyDays(1).atHour(2).create();
+  Logger.log('ติดตั้ง trigger nightlyPrecache3 ทุกวัน ~02:00 แล้ว');
+}
+function removeNightlyTrigger3() {
+  ScriptApp.getProjectTriggers().forEach(function (tr) {
+    if (tr.getHandlerFunction() === 'nightlyPrecache3') ScriptApp.deleteTrigger(tr);
   });
 }
