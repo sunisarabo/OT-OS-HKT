@@ -168,3 +168,27 @@ function inspectEmployees3() {
       ' | LL ' + ((r.LL||{}).headcount||0) + 'คน/' + ((r.LL||{}).total_hrs||0) + 'ชม.');
   });
 }
+
+/**
+ * Diagnostic — โชว์ทุก teamCode ที่เจอ + การจัดแผนก (KP/LP/LL) + ข้อความทีมดิบ
+ * ใช้หาสาเหตุว่าทำไม LP/LL = 0 (record ของ Porter/PVT/LL ถูกจัดไปไหน หรือไม่มีเลย)
+ */
+function diagTeams3() {
+  var end = new Date(); end.setDate(end.getDate() - 1);
+  var start = new Date(end.getTime() - 2 * 86400000);
+  var att = readAttendance(start, end);
+  Logger.log('records: ' + (att ? att.length : 0) + '  ช่วง ' + formatDate(start, 'yyyy-MM-dd') + ' ถึง ' + formatDate(end, 'yyyy-MM-dd'));
+  var by = {};
+  (att || []).forEach(function (r) {
+    var tc = r.team ? (normalizeTeamCode(r.team) || r.team) : 'UNKNOWN';
+    if (!by[tc]) by[tc] = { rec: 0, ot: 0, dept: dept3ForTeam_(tc), raw: {} };
+    by[tc].rec++;
+    if ((+r.otHrs || 0) > 0) by[tc].ot++;
+    if (r.team) by[tc].raw[String(r.team)] = true;
+  });
+  Logger.log('=== teamCode | dept | records | withOT | rawTeamStrings ===');
+  Object.keys(by).sort(function (a, b) { return by[a].dept < by[b].dept ? -1 : 1; }).forEach(function (tc) {
+    var b = by[tc];
+    Logger.log(b.dept + ' | ' + tc + ' | rec ' + b.rec + ' | OT ' + b.ot + ' | raw=' + Object.keys(b.raw).join(' , '));
+  });
+}
