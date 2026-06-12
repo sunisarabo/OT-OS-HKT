@@ -12,7 +12,7 @@
 
 var DEPT3_LABEL_ = {
   KP: '── KP — การโดยสาร ──',
-  LP: '── LP — Porter / PVT ──',
+  LP: '── LP — บริการผู้โดยสารพิเศษ ──',
   LL: '── LL — ติดตามสัมภาระ ──'
 };
 var DEPT3_ORDER_ = ['KP', 'LP', 'LL'];

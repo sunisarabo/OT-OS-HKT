@@ -19,7 +19,7 @@
 
 var DEPT3_DEFS = [
   { code: 'KP', name: 'KP - การโดยสาร',     color: '#2563eb' },
-  { code: 'LP', name: 'LP - Porter / PVT',  color: '#a855f7' },
+  { code: 'LP', name: 'LP - บริการผู้โดยสารพิเศษ',  color: '#a855f7' },
   { code: 'LL', name: 'LL - ติดตามสัมภาระ',  color: '#0d9488' }
 ];
 var EMP3_MON_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
