@@ -79,7 +79,7 @@ function setDept(c){dept=c;buildDeptBar();render();}
 
 function loadMonth(){
   var mk=document.getElementById('month').value;
-  document.getElementById('content').innerHTML='<div class="card empty"><span class="spin"></span> กำลังดึงข้อมูล...</div>';
+  document.getElementById('content').innerHTML='<div class="card empty"><span class="spin"></span> กำลังดึงข้อมูล... (ถ้ายังไม่เคย precompute เดือนนี้ อาจใช้เวลาหลายนาที)</div>';
   document.getElementById('metrics').style.display='none';
   google.script.run.withSuccessHandler(onData).withFailureHandler(function(e){
     document.getElementById('content').innerHTML='<div class="card empty">✗ '+(e&&e.message||e)+'</div>';

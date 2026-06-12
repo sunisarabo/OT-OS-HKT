@@ -140,25 +140,63 @@ function getEmployeeReport3(startDate, endDate, attendanceOpt) {
 
 /**
  * เรียกจากหน้าเว็บ (google.script.run) — รับ 'YYYY-MM' หรือว่าง (= เดือนปัจจุบัน)
- * มี cache ต่อเดือน 6 ชม. (โหลดครั้งแรกช้าเพราะอ่านไฟล์ roster ทั้งเดือน, ครั้งถัดไปเร็ว)
+ * ลำดับการหา: CacheService → ไฟล์ Drive (precompute) → คำนวณสด (ช้า ~10-15 นาที)
+ * แนะนำ: รัน precacheMonth3('2026-06') ใน Editor ก่อน 1 ครั้ง แล้วหน้าเว็บจะเปิดเร็วทันที
  */
 function getEmployeeReport3ForClient(monthStr, force) {
-  var key = 'EMP3_' + (monthStr || 'cur');
-  var cache = CacheService.getScriptCache();
+  var mm = _emp3Month_(monthStr);
+  var cache = CacheService.getScriptCache(), ckey = 'EMP3_' + mm.key;
   if (!force) {
-    var hit = cache.get(key);
+    var hit = cache.get(ckey);
     if (hit) { try { var o = JSON.parse(hit); o.cached = true; return o; } catch (e) {} }
+    var dv = _emp3DriveRead_(mm.key);
+    if (dv) { try { var s0 = JSON.stringify(dv); if (s0.length < 95000) cache.put(ckey, s0, 21600); } catch (e) {} return dv; }
   }
-  var start, end;
-  var m = String(monthStr || '').match(/^(\d{4})-(\d{1,2})$/);
-  if (m) { start = new Date(+m[1], +m[2] - 1, 1); end = new Date(+m[1], +m[2], 0); }
-  else { var t = new Date(); start = new Date(t.getFullYear(), t.getMonth(), 1); end = new Date(t.getFullYear(), t.getMonth() + 1, 0); }
-  var data = getEmployeeReport3(start, end);
-  try { var s = JSON.stringify(data); if (s.length < 95000) cache.put(key, s, 21600); } catch (e) {}
+  var data = getEmployeeReport3(mm.start, mm.end);
+  try { _emp3DriveSave_(mm.key, data); } catch (e) {}
+  try { var s = JSON.stringify(data); if (s.length < 95000) cache.put(ckey, s, 21600); } catch (e) {}
   return data;
 }
 
-function clearEmployee3Cache() { CacheService.getScriptCache().removeAll(['EMP3_cur']); return { ok: true }; }
+/** รันใน Editor ครั้งเดียวต่อเดือน (Workspace จำกัด 30 นาที พอ) → เก็บผลไว้ให้หน้าเว็บอ่านเร็ว */
+function precacheMonth3(monthStr) {
+  var mm = _emp3Month_(monthStr);
+  var data = getEmployeeReport3(mm.start, mm.end);
+  _emp3DriveSave_(mm.key, data);
+  try { CacheService.getScriptCache().put('EMP3_' + mm.key, JSON.stringify(data).slice(0, 99000), 21600); } catch (e) {}
+  var first = data.months[0];
+  var r = first ? data.report[first] : {};
+  Logger.log('precached ' + mm.key + ' (records ' + (data.meta ? data.meta.records : 0) + ') → ' +
+    'KP ' + (((r.KP||{}).headcount)||0) + ' | LP ' + (((r.LP||{}).headcount)||0) + ' | LL ' + (((r.LL||{}).headcount)||0));
+  return { ok: true, month: mm.key };
+}
+
+function clearEmployee3Cache(monthStr) {
+  var mm = _emp3Month_(monthStr);
+  try { CacheService.getScriptCache().remove('EMP3_' + mm.key); } catch (e) {}
+  var f = _emp3DriveFind_(_emp3CacheName_(mm.key));
+  if (f) f.setTrashed(true);
+  return { ok: true };
+}
+
+// ── helpers: เก็บ/อ่านผลลัพธ์เป็นไฟล์ JSON ใน Drive ──
+function _emp3Month_(monthStr) {
+  var m = String(monthStr || '').match(/^(\d{4})-(\d{1,2})$/);
+  if (m) return { key: m[1] + '-' + ('0' + m[2]).slice(-2), start: new Date(+m[1], +m[2] - 1, 1), end: new Date(+m[1], +m[2], 0) };
+  var t = new Date();
+  return { key: t.getFullYear() + '-' + ('0' + (t.getMonth() + 1)).slice(-2), start: new Date(t.getFullYear(), t.getMonth(), 1), end: new Date(t.getFullYear(), t.getMonth() + 1, 0) };
+}
+function _emp3CacheName_(key) { return '_EMP3_cache_' + key + '.json'; }
+function _emp3DriveFind_(name) { var it = DriveApp.getFilesByName(name); return it.hasNext() ? it.next() : null; }
+function _emp3DriveRead_(key) {
+  var f = _emp3DriveFind_(_emp3CacheName_(key));
+  if (!f) return null;
+  try { var o = JSON.parse(f.getBlob().getDataAsString()); o.cached = true; return o; } catch (e) { return null; }
+}
+function _emp3DriveSave_(key, data) {
+  var name = _emp3CacheName_(key), json = JSON.stringify(data), f = _emp3DriveFind_(name);
+  if (f) f.setContent(json); else DriveApp.createFile(name, json, 'application/json');
+}
 
 /** route สำหรับ doGet: if (params.view === 'employees') return renderEmployeeReportPage_(); */
 function renderEmployeeReportPage_() {
