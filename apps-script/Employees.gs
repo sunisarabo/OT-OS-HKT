@@ -59,10 +59,11 @@ function emp3WeekIndex_(day) {
 
 /**
  * รวม OT รายคน -> แผนก(KP/LP/LL) -> ทีม -> สัปดาห์/เดือน
+ * @param {Array} [attendanceOpt] ส่ง attendance ที่อ่านไว้แล้วมาได้ (กันอ่านซ้ำ)
  * @returns {months:[], depts:[], report:{}, meta:{}}
  */
-function getEmployeeReport3(startDate, endDate) {
-  var attendance = readAttendance(startDate, endDate);
+function getEmployeeReport3(startDate, endDate, attendanceOpt) {
+  var attendance = attendanceOpt || readAttendance(startDate, endDate);
   var report = {};
   var monthOrder = {};
   var seenEmp = {};
@@ -123,14 +124,25 @@ function getEmployeeReport3(startDate, endDate) {
 
 /**
  * เรียกจากหน้าเว็บ (google.script.run) — รับ 'YYYY-MM' หรือว่าง (= เดือนปัจจุบัน)
+ * มี cache ต่อเดือน 6 ชม. (โหลดครั้งแรกช้าเพราะอ่านไฟล์ roster ทั้งเดือน, ครั้งถัดไปเร็ว)
  */
-function getEmployeeReport3ForClient(monthStr) {
+function getEmployeeReport3ForClient(monthStr, force) {
+  var key = 'EMP3_' + (monthStr || 'cur');
+  var cache = CacheService.getScriptCache();
+  if (!force) {
+    var hit = cache.get(key);
+    if (hit) { try { var o = JSON.parse(hit); o.cached = true; return o; } catch (e) {} }
+  }
   var start, end;
   var m = String(monthStr || '').match(/^(\d{4})-(\d{1,2})$/);
   if (m) { start = new Date(+m[1], +m[2] - 1, 1); end = new Date(+m[1], +m[2], 0); }
   else { var t = new Date(); start = new Date(t.getFullYear(), t.getMonth(), 1); end = new Date(t.getFullYear(), t.getMonth() + 1, 0); }
-  return getEmployeeReport3(start, end);
+  var data = getEmployeeReport3(start, end);
+  try { var s = JSON.stringify(data); if (s.length < 95000) cache.put(key, s, 21600); } catch (e) {}
+  return data;
 }
+
+function clearEmployee3Cache() { CacheService.getScriptCache().removeAll(['EMP3_cur']); return { ok: true }; }
 
 /** route สำหรับ doGet: if (params.view === 'employees') return renderEmployeeReportPage_(); */
 function renderEmployeeReportPage_() {
@@ -140,14 +152,14 @@ function renderEmployeeReportPage_() {
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
-/** Diagnostic — รันใน Editor */
+/** Diagnostic — รันใน Editor (ทดสอบ 3 วันล่าสุด เพื่อให้เร็ว ไม่ค้าง) */
 function inspectEmployees3() {
-  var t = new Date();
-  var start = new Date(t.getFullYear(), t.getMonth() - 1, 1);
-  var end   = new Date(t.getFullYear(), t.getMonth(), 0);
-  var att = readAttendance(start, end);
+  var end = new Date(); end.setDate(end.getDate() - 1);      // เมื่อวาน
+  var start = new Date(end.getTime() - 2 * 86400000);         // ย้อนหลัง 3 วัน
+  Logger.log('ช่วงทดสอบ: ' + formatDate(start, 'yyyy-MM-dd') + ' ถึง ' + formatDate(end, 'yyyy-MM-dd'));
+  var att = readAttendance(start, end);                        // อ่านรอบเดียว
   Logger.log('attendance records: ' + (att ? att.length : 0));
-  var d = getEmployeeReport3(start, end);
+  var d = getEmployeeReport3(start, end, att);                 // ใช้ att ซ้ำ (ไม่อ่านใหม่)
   Logger.log('months: ' + d.months.join(', '));
   d.months.forEach(function (mk) {
     var r = d.report[mk];
