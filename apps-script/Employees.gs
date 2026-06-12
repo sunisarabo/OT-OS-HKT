@@ -149,7 +149,7 @@ function getEmployeeReport3(startDate, endDate, attendanceOpt) {
  * ลำดับการหา: CacheService → ไฟล์ Drive (precompute) → คำนวณสด (ช้า ~10-15 นาที)
  * แนะนำ: รัน precacheMonth3('2026-06') ใน Editor ก่อน 1 ครั้ง แล้วหน้าเว็บจะเปิดเร็วทันที
  */
-function getEmployeeReport3ForClient(monthStr, force) {
+function getEmployeeReport3ForClient(monthStr, force, quickOnly) {
   var mm = _emp3Month_(monthStr);
   var cache = CacheService.getScriptCache(), ckey = 'EMP3_' + mm.key;
   if (!force) {
@@ -157,6 +157,10 @@ function getEmployeeReport3ForClient(monthStr, force) {
     if (hit) { try { var o = JSON.parse(hit); o.cached = true; return o; } catch (e) {} }
     var dv = _emp3DriveRead_(mm.key);
     if (dv) { try { var s0 = JSON.stringify(dv); if (s0.length < 95000) cache.put(ckey, s0, 21600); } catch (e) {} return dv; }
+  }
+  // ยังไม่ precompute → ไม่คำนวณสด (กันหน้าเว็บค้าง 15 นาที) แจ้งให้ไป precache
+  if (quickOnly && !force) {
+    return { notReady: true, month: mm.key, months: [], depts: DEPT3_DEFS, report: {}, meta: { records: 0 } };
   }
   var data = getEmployeeReport3(mm.start, mm.end);
   try { _emp3DriveSave_(mm.key, data); } catch (e) {}
@@ -324,28 +328,50 @@ function _readLLPivotRecords(startDate, endDate, master) {
 // ════════════════════════════════════════════════════════════════
 // PRECOMPUTE หลายเดือน + TRIGGER รายคืน
 // ════════════════════════════════════════════════════════════════
-/** precache เดือนปัจจุบัน + เดือนก่อนหน้า (ใช้กับ trigger รายคืน — อยู่ในลิมิต 30 นาที) */
+// เดือนแรกที่มีข้อมูล roster (ปรับได้)
+var EMP3_DATA_START = '2025-10';
+
+/** รายการเดือนทั้งหมดที่ควรมี (EMP3_DATA_START → เดือนปัจจุบัน) ใหม่→เก่า */
+function _emp3AllMonths_() {
+  var sm = EMP3_DATA_START.match(/^(\d{4})-(\d{1,2})$/);
+  var s = new Date(+sm[1], +sm[2] - 1, 1), t = new Date();
+  var cur = new Date(t.getFullYear(), t.getMonth(), 1), out = [];
+  var d = new Date(cur);
+  while (d >= s) {
+    out.push(d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2));
+    d = new Date(d.getFullYear(), d.getMonth() - 1, 1);
+  }
+  return out; // newest first
+}
+
+/** เดือนที่ยังไม่มีไฟล์ผลใน Drive (ยังไม่ precompute) */
+function _emp3MissingMonths_() {
+  return _emp3AllMonths_().filter(function (mk) { return !_emp3DriveFind_(_emp3CacheName_(mk)); });
+}
+
+/**
+ * Backfill — precompute "เดือนที่ยังไม่ได้ทำ" ทีละ 1 เดือน (รันซ้ำได้เรื่อย ๆ ผ่านปุ่ม Run)
+ * รันจนกว่า log จะขึ้น "ครบทุกเดือนแล้ว"
+ */
+function precacheNextMissing3() {
+  var miss = _emp3MissingMonths_();
+  if (!miss.length) { Logger.log('✓ precompute ครบทุกเดือนแล้ว (' + _emp3AllMonths_().join(', ') + ')'); return { done: true }; }
+  var mk = miss[0]; // ใหม่สุดที่ยังขาด
+  precacheMonth3(mk);
+  Logger.log('เหลืออีก ' + (miss.length - 1) + ' เดือน: ' + miss.slice(1).join(', '));
+  return { month: mk, remaining: miss.length - 1 };
+}
+
+/** trigger รายคืน: refresh เดือนปัจจุบัน + เติมเดือนเก่าที่ยังขาด 1 เดือน (อยู่ในลิมิต 30 นาที) */
 function nightlyPrecache3() {
   var t = new Date();
   var cur = t.getFullYear() + '-' + ('0' + (t.getMonth() + 1)).slice(-2);
-  var p = new Date(t.getFullYear(), t.getMonth() - 1, 1);
-  var prev = p.getFullYear() + '-' + ('0' + (p.getMonth() + 1)).slice(-2);
-  [prev, cur].forEach(function (mk) {
-    try { precacheMonth3(mk); } catch (e) { Logger.log('nightlyPrecache3 ' + mk + ': ' + e.message); }
-  });
-}
-
-/** precache ย้อนหลัง n เดือน (รันมือเพื่อ backfill — ระวังลิมิต 30 นาที, แนะนำ n<=2 ต่อครั้ง) */
-function precacheRecentMonths3(n) {
-  n = n || 2;
-  var t = new Date(), done = [];
-  for (var i = 0; i < n; i++) {
-    var d = new Date(t.getFullYear(), t.getMonth() - i, 1);
-    var mk = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2);
-    try { precacheMonth3(mk); done.push(mk); } catch (e) { Logger.log('precacheRecentMonths3 ' + mk + ': ' + e.message); }
+  try { precacheMonth3(cur); } catch (e) { Logger.log('nightly cur ' + cur + ': ' + e.message); }
+  // เติมเดือนเก่าที่ยังขาด 1 เดือน/คืน
+  var miss = _emp3MissingMonths_().filter(function (mk) { return mk !== cur; });
+  if (miss.length) {
+    try { precacheMonth3(miss[0]); } catch (e) { Logger.log('nightly backfill ' + miss[0] + ': ' + e.message); }
   }
-  Logger.log('precacheRecentMonths3 done: ' + done.join(', '));
-  return done;
 }
 
 /** ติดตั้ง trigger รันทุกคืน ~02:00 (ลบของเดิมก่อนกันซ้ำ) */

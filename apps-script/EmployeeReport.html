@@ -83,13 +83,19 @@ function loadMonth(){
   document.getElementById('metrics').style.display='none';
   google.script.run.withSuccessHandler(onData).withFailureHandler(function(e){
     document.getElementById('content').innerHTML='<div class="card empty">✗ '+(e&&e.message||e)+'</div>';
-  }).getEmployeeReport3ForClient(mk);
+  }).getEmployeeReport3ForClient(mk, false, true);
 }
 function onData(d){
   DATA=d;
   var mk=document.getElementById('month').value, lbl=mkLabel(mk);
-  document.getElementById('meta').textContent='records: '+((d.meta&&d.meta.records)||0);
   curLabel=lbl;
+  if(d && d.notReady){
+    document.getElementById('metrics').style.display='none';
+    document.getElementById('meta').textContent='';
+    document.getElementById('content').innerHTML='<div class="card empty">เดือน '+lbl+' ยังไม่ได้ประมวลผล<br><br>ให้รัน <b>precacheNextMissing3</b> (หรือ <b>precacheMonth3</b>) ใน Apps Script Editor ก่อน — หรือรอ trigger รายคืนเติมให้อัตโนมัติ</div>';
+    return;
+  }
+  document.getElementById('meta').textContent='records: '+((d.meta&&d.meta.records)||0)+(d.cached?' · cached':'');
   render();
 }
 var curLabel='';
