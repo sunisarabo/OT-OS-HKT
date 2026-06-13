@@ -134,6 +134,7 @@ ${headContent}
     font-size: 12px; font-weight: 600; transition: all 0.15s; }
   .wa-control button:hover { background: rgba(255,255,255,0.25); }
   .wa-control .title { font-size: 14px; font-weight: 700; margin-right: 14px; }
+  .wa-control .wa-tab.on { background:#fff !important; color:#0a3d7a !important; }
 
   /* ── Primary "ดึงข้อมูล" button — ใหญ่ + ส้ม + pulse ─────── */
   #waApplyBtn {
@@ -168,6 +169,8 @@ ${headContent}
 
 <div class="wa-control">
   <span class="title">📊 OT Dashboard — ${cfg.REPORT_DEPT_CODE}</span>
+  <button id="waTabDash" class="wa-tab on" onclick="waShowDash()">📊 ภาพรวม</button>
+  <button id="waTabEmp" class="wa-tab" onclick="waShowEmp()">👥 รายชื่อพนักงาน</button>
   <label>ช่วง:</label>
   <select id="waPeriod" onchange="waPeriodChange()">
     <option value="daily"   ${period==='daily'?'selected':''}>รายวัน</option>
@@ -200,10 +203,27 @@ ${headContent}
   </div>
 </div>
 
+<div id="waDashView">
 ${bodyContent}
+</div>
+<iframe id="waEmpView" src="" style="display:none;width:100%;height:calc(100vh - 58px);border:0"></iframe>
 
 <script>
   const WA_BASE = ${JSON.stringify(baseUrl)};
+  function waShowEmp(){
+    var f=document.getElementById('waEmpView');
+    if(!f.getAttribute('src')) f.setAttribute('src', WA_BASE + '?view=employees');
+    f.style.display='block';
+    document.getElementById('waDashView').style.display='none';
+    document.getElementById('waTabEmp').classList.add('on');
+    document.getElementById('waTabDash').classList.remove('on');
+  }
+  function waShowDash(){
+    document.getElementById('waEmpView').style.display='none';
+    document.getElementById('waDashView').style.display='block';
+    document.getElementById('waTabDash').classList.add('on');
+    document.getElementById('waTabEmp').classList.remove('on');
+  }
 
   function waShowLoading() {
     const el = document.getElementById('waLoading');

@@ -166,6 +166,8 @@ function exportCsv(){
 
 buildMonthSelect();
 buildDeptBar();
+// อยู่ใน iframe (รวมหน้าเดียวกับ Dashboard) → ซ่อนปุ่ม Dashboard ที่ซ้ำกับแท็บ
+if(window.top!==window.self){ var _dl=document.getElementById('dashLink'); if(_dl) _dl.style.display='none'; }
 // ลิงก์กลับหน้า Dashboard ภาพรวม (ใช้ getWebAppUrl จาก Webapp.gs)
 if(typeof google!=='undefined'&&google.script&&google.script.run){
   google.script.run.withSuccessHandler(function(u){ if(u) document.getElementById('dashLink').href=u; }).getWebAppUrl();
