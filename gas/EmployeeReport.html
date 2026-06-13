@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OT รายชื่อ KP/LP/LL</title>
+<style>
+:root{--bg:#f7f7f5;--card:#fff;--txt:#1a1a18;--txt2:#5f5e5a;--txt3:#8a8a82;--br:rgba(0,0,0,.12);--soft:#f2f3f5;
+--font:-apple-system,BlinkMacSystemFont,'Segoe UI','Sarabun',sans-serif;--KP:#2563eb;--LP:#a855f7;--LL:#0d9488}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font);background:var(--bg);color:var(--txt);padding:14px}
+.wrap{max-width:1180px;margin:0 auto}
+.head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+h1{font-size:20px;font-weight:600}.sub{font-size:12.5px;color:var(--txt2);margin-top:3px}
+.deptbar{display:flex;background:var(--card);border:.5px solid var(--br);border-radius:9px;padding:3px;gap:2px}
+.deptbtn{padding:7px 18px;border:none;background:transparent;border-radius:6px;cursor:pointer;font-family:var(--font);font-size:13px;font-weight:600;color:var(--txt2)}
+.deptbtn.on.KP{background:var(--KP);color:#fff}.deptbtn.on.LP{background:var(--LP);color:#fff}.deptbtn.on.LL{background:var(--LL);color:#fff}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center}
+.btn,select{padding:7px 13px;border:.5px solid var(--br);border-radius:8px;background:var(--card);cursor:pointer;font-family:var(--font);font-size:12px;font-weight:500;color:var(--txt)}
+.btn:hover{background:var(--soft)}
+.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
+@media(max-width:760px){.metrics{grid-template-columns:repeat(2,1fr)}.head{flex-direction:column}}
+.metric{background:var(--card);border:.5px solid var(--br);border-radius:9px;padding:12px 14px}
+.metric .l{font-size:11.5px;color:var(--txt2);margin-bottom:5px}.metric .v{font-size:19px;font-weight:600}.metric .s{font-size:11px;color:var(--txt3);margin-top:2px}
+.card{background:var(--card);border:.5px solid var(--br);border-radius:11px;padding:14px 16px;margin-bottom:14px;overflow:hidden}
+.teamhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;padding-bottom:9px;border-bottom:.5px solid var(--br)}
+.teamname{font-size:14px;font-weight:600}.teamsum{font-size:12px;color:var(--txt2)}.tw{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th{font-size:11px;font-weight:500;color:var(--txt2);text-align:left;padding:7px 9px;border-bottom:.5px solid var(--br);background:var(--soft);white-space:nowrap}
+td{padding:6px 9px;border-bottom:.5px solid var(--br);white-space:nowrap}td.num,th.num{text-align:right}
+tr:hover td{background:var(--soft)}.tot td{font-weight:600;background:var(--soft)}
+.bar{display:flex;align-items:center;gap:8px}.barbg{height:6px;border-radius:3px;background:var(--br);flex:1;min-width:46px}.barfill{height:6px;border-radius:3px}
+.empty{text-align:center;padding:40px 20px;color:var(--txt2);font-size:13px}
+.spin{width:14px;height:14px;border:2px solid #0002;border-top-color:#185fa5;border-radius:50%;display:inline-block;animation:sp .8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media print{.actions,.deptbar,.btn,select{display:none!important}.card{break-inside:avoid;border:1px solid #cbd5e1}th{background:#f1f5f9!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <div><h1>รายงาน OT รายชื่อพนักงาน</h1><div class="sub" id="sub">แยก 3 แผนก KP / LP / LL · รายสัปดาห์ + รายเดือน</div></div>
+    <div class="deptbar" id="deptbar"></div>
+  </div>
+  <div class="actions">
+    <select id="month" onchange="loadMonth()"></select>
+    <a class="btn" id="dashLink" target="_top" href="#" style="text-decoration:none">📊 Dashboard ภาพรวม</a>
+    <button class="btn" onclick="exportCsv()">⬇ Export CSV</button>
+    <button class="btn" onclick="window.print()">🖨 Print / PDF</button>
+    <span class="sub" id="meta" style="margin-left:auto"></span>
+  </div>
+  <div class="metrics" id="metrics" style="display:none"></div>
+  <div id="content"></div>
+</div>
+
+<script>
+var DATA=null, dept='KP', DC={KP:'#2563eb',LP:'#a855f7',LL:'#0d9488'};
+var DEPTS=[{code:'KP',name:'KP - การโดยสาร'},{code:'LP',name:'LP - บริการผู้โดยสารพิเศษ'},{code:'LL',name:'LL - ติดตามสัมภาระ'}];
+var MONTH_ABBR=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+function fmt(h){if(!h)return '0';return (Math.round(h*10)/10).toLocaleString('en-US',{maximumFractionDigits:1});}
+function esc(s){return String(s==null?'':s).replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];});}
+
+function buildMonthSelect(){
+  var sel=document.getElementById('month'), now=new Date(), opts='';
+  for(var i=0;i<10;i++){
+    var d=new Date(now.getFullYear(), now.getMonth()-i, 1);
+    var val=d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2);
+    var lbl=MONTH_ABBR[d.getMonth()]+' '+d.getFullYear();
+    opts+='<option value="'+val+'">'+lbl+'</option>';
+  }
+  sel.innerHTML=opts;
+}
+function buildDeptBar(){
+  document.getElementById('deptbar').innerHTML=DEPTS.map(function(x){
+    return '<button class="deptbtn '+x.code+(x.code===dept?' on':'')+'" onclick="setDept(\''+x.code+'\')">'+x.code+'</button>';
+  }).join('');
+}
+function setDept(c){dept=c;buildDeptBar();render();}
+
+function loadMonth(){
+  var mk=document.getElementById('month').value;
+  document.getElementById('content').innerHTML='<div class="card empty"><span class="spin"></span> กำลังดึงข้อมูล... (ถ้ายังไม่เคย precompute เดือนนี้ อาจใช้เวลาหลายนาที)</div>';
+  document.getElementById('metrics').style.display='none';
+  google.script.run.withSuccessHandler(onData).withFailureHandler(function(e){
+    document.getElementById('content').innerHTML='<div class="card empty">✗ '+(e&&e.message||e)+'</div>';
+  }).getEmployeeReport3ForClient(mk, false, true);
+}
+function onData(d){
+  DATA=d;
+  var mk=document.getElementById('month').value, lbl=mkLabel(mk);
+  curLabel=lbl;
+  if(d && d.notReady){
+    document.getElementById('metrics').style.display='none';
+    document.getElementById('meta').textContent='';
+    document.getElementById('content').innerHTML='<div class="card empty">เดือน '+lbl+' ยังไม่ได้ประมวลผล<br><br>ให้รัน <b>precacheNextMissing3</b> (หรือ <b>precacheMonth3</b>) ใน Apps Script Editor ก่อน — หรือรอ trigger รายคืนเติมให้อัตโนมัติ</div>';
+    return;
+  }
+  document.getElementById('meta').textContent='records: '+((d.meta&&d.meta.records)||0)+(d.cached?' · cached':'');
+  render();
+}
+var curLabel='';
+function mkLabel(mk){var p=mk.split('-');return MONTH_ABBR[(+p[1])-1]+' '+p[0];}
+
+function deptObj(){return (DATA&&DATA.report[curLabel]&&DATA.report[curLabel][dept])||null;}
+
+function render(){
+  var info=DEPTS.filter(function(x){return x.code===dept;})[0]||{name:dept};
+  document.getElementById('sub').textContent=info.name+' · '+curLabel+' · รายสัปดาห์ (W1–W4) + รวมเดือน (ชม.)';
+  var b=deptObj(), mx=document.getElementById('metrics');
+  if(!b||!b.employees.length){
+    mx.style.display='none';
+    document.getElementById('content').innerHTML='<div class="card empty">ไม่มีข้อมูล OT ของแผนก '+dept+' ในเดือน '+curLabel+'</div>';
+    return;
+  }
+  var teams=Object.keys(b.teams).sort(function(a,c){return b.teams[c].total_hrs-b.teams[a].total_hrs;});
+  var top=b.employees[0];
+  mx.style.display='grid';
+  mx.innerHTML=metric('OT รวม — '+dept,fmt(b.total_hrs)+' ชม.',b.headcount+' คน')
+    +metric('พนักงานที่ทำ OT',b.headcount+' คน',teams.length+' ทีมย่อย')
+    +metric('สูงสุดรายคน',top?esc(top.name):'-',top?fmt(top.total_hrs)+' ชม.':'')
+    +metric('ทีมสูงสุด',teams[0]||'-',teams[0]?fmt(b.teams[teams[0]].total_hrs)+' ชม.':'');
+
+  var col=DC[dept], html='';
+  teams.forEach(function(tn){
+    var emps=b.employees.filter(function(e){return e.team===tn;});
+    if(!emps.length)return;
+    var tt=b.teams[tn], maxv=Math.max.apply(null,emps.map(function(e){return e.total_hrs;}))||1;
+    html+='<div class="card"><div class="teamhead"><div class="teamname" style="color:'+col+'">'+esc(tn)+'</div>'
+      +'<div class="teamsum">'+emps.length+' คน · รวม '+fmt(tt.total_hrs)+' ชม.</div></div><div class="tw"><table>'
+      +'<thead><tr><th>ลำดับ</th><th>รหัส</th><th>ชื่อ - สกุล</th>'
+      +'<th class="num">W1</th><th class="num">W2</th><th class="num">W3</th><th class="num">W4</th><th class="num">รวมเดือน</th></tr></thead><tbody>';
+    emps.forEach(function(e,i){
+      var w=e.weeks;
+      html+='<tr><td>'+(i+1)+'</td><td style="color:var(--txt2)">'+esc(e.code)+'</td><td>'+esc(e.name)+'</td>'
+        +'<td class="num">'+(w[0]?fmt(w[0]):'-')+'</td><td class="num">'+(w[1]?fmt(w[1]):'-')+'</td>'
+        +'<td class="num">'+(w[2]?fmt(w[2]):'-')+'</td><td class="num">'+(w[3]?fmt(w[3]):'-')+'</td>'
+        +'<td class="num"><div class="bar"><div class="barbg"><div class="barfill" style="width:'+Math.round(e.total_hrs/maxv*100)+'%;background:'+col+'"></div></div>'
+        +'<span style="min-width:46px;text-align:right;font-weight:600">'+fmt(e.total_hrs)+'</span></div></td></tr>';
+    });
+    var wt=[0,0,0,0];emps.forEach(function(e){for(var k=0;k<4;k++)wt[k]+=e.weeks[k];});
+    html+='<tr class="tot"><td colspan="3">รวมทีม '+esc(tn)+'</td>'
+      +'<td class="num">'+fmt(wt[0])+'</td><td class="num">'+fmt(wt[1])+'</td><td class="num">'+fmt(wt[2])+'</td><td class="num">'+fmt(wt[3])+'</td>'
+      +'<td class="num">'+fmt(tt.total_hrs)+'</td></tr></tbody></table></div></div>';
+  });
+  document.getElementById('content').innerHTML=html;
+}
+function metric(l,v,s){return '<div class="metric"><div class="l">'+l+'</div><div class="v">'+v+'</div><div class="s">'+(s||'')+'</div></div>';}
+
+function exportCsv(){
+  var b=deptObj();if(!b)return;
+  var rows=[['รายงาน OT รายชื่อ — แผนก '+dept,'เดือน '+curLabel],
+            ['ลำดับ','รหัสพนักงาน','ชื่อ - สกุล','ทีม','W1','W2','W3','W4','รวมเดือน(ชม.)']];
+  var teams=Object.keys(b.teams).sort(function(a,c){return b.teams[c].total_hrs-b.teams[a].total_hrs;});
+  teams.forEach(function(tn){
+    b.employees.filter(function(e){return e.team===tn;}).forEach(function(e,i){
+      rows.push([i+1,e.code,e.name,tn,fmt(e.weeks[0]),fmt(e.weeks[1]),fmt(e.weeks[2]),fmt(e.weeks[3]),fmt(e.total_hrs)]);
+    });
+  });
+  rows.push(['','','','รวมแผนก '+dept,'','','','',fmt(b.total_hrs)]);
+  var csv=rows.map(function(r){return r.map(function(c){var s=String(c==null?'':c);return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}).join(',');}).join('\n');
+  var blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8;'});
+  var a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download='OT-'+dept+'_'+curLabel.replace(' ','-')+'.csv';a.click();URL.revokeObjectURL(a.href);
+}
+
+buildMonthSelect();
+buildDeptBar();
+// ลิงก์กลับหน้า Dashboard ภาพรวม (ใช้ getWebAppUrl จาก Webapp.gs)
+if(typeof google!=='undefined'&&google.script&&google.script.run){
+  google.script.run.withSuccessHandler(function(u){ if(u) document.getElementById('dashLink').href=u; }).getWebAppUrl();
+}
+loadMonth();
+</script>
+</body>
+</html>
