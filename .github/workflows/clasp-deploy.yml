@@ -20,19 +20,14 @@ jobs:
         working-directory: gas
         env:
           CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        shell: bash
         run: |
-          if [ -z "$CLASPRC_JSON" ]; then
-            echo "::warning::ยังไม่ได้ตั้ง secret CLASPRC_JSON — ข้าม"
-            exit 0
-          fi
-          echo "clasp version: $(clasp --version)"
-          # เขียน token ลงทั้ง 2 path ที่ clasp v3 อาจอ่าน
+          set +e
+          if [ -z "$CLASPRC_JSON" ]; then echo "::warning::no CLASPRC_JSON secret"; exit 0; fi
+          echo "clasp version: $(clasp --version 2>&1)"
           printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
-          mkdir -p "$HOME/.config/clasp"
-          printf '%s' "$CLASPRC_JSON" > "$HOME/.config/clasp/.clasprc.json"
-          # DEBUG: โชว์เฉพาะชื่อ key (ไม่โชว์ค่า token) เพื่อตรวจโครงสร้าง
-          echo "--- ~/.clasprc.json size: $(wc -c < "$HOME/.clasprc.json") bytes ---"
-          node -e "try{const c=require(require('os').homedir()+'/.clasprc.json');console.log('TOP KEYS:',JSON.stringify(Object.keys(c)));for(const k of Object.keys(c)){if(c[k]&&typeof c[k]==='object')console.log('  '+k+' keys:',JSON.stringify(Object.keys(c[k])));}}catch(e){console.log('PARSE ERROR:',e.message)}"
-          echo "--- .clasp.json ---"; cat .clasp.json
+          echo "rc size: $(wc -c < "$HOME/.clasprc.json") bytes"
+          node -e "try{const c=require(require('os').homedir()+'/.clasprc.json');console.log('TOP KEYS:',JSON.stringify(Object.keys(c)));for(const k of Object.keys(c)){if(c[k]&&typeof c[k]==='object'){console.log(' '+k+':',JSON.stringify(Object.keys(c[k])));for(const k2 of Object.keys(c[k])){if(c[k][k2]&&typeof c[k][k2]==='object')console.log('   '+k+'.'+k2+':',JSON.stringify(Object.keys(c[k][k2])));}}}}catch(e){console.log('PARSE ERROR:',e.message)}"
           echo "--- clasp push ---"
-          clasp push --force
+          clasp push --force 2>&1
+          echo "clasp push exit code: $?"
