@@ -1,0 +1,31 @@
+name: Deploy to Apps Script (clasp)
+
+# push เข้า repo (เฉพาะเมื่อไฟล์ใน gas/ เปลี่ยน) → clasp push เข้าโปรเจกต์ OT อัตโนมัติ
+on:
+  push:
+    branches: [ main, claude/confident-lamport-4lqfh5 ]
+    paths: [ 'gas/**' ]
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install clasp
+        run: npm install -g @google/clasp@2.4.2
+      - name: clasp push → Apps Script
+        working-directory: gas
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          if [ -z "$CLASPRC_JSON" ]; then
+            echo "::warning::ยังไม่ได้ตั้ง secret CLASPRC_JSON — ข้าม (ดู gas/CLASP_AUTODEPLOY.md)"
+            exit 0
+          fi
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          clasp push -f
+          echo "✓ pushed to Apps Script"
