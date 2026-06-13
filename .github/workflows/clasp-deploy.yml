@@ -16,7 +16,7 @@ jobs:
         with:
           node-version: '20'
       - name: Install clasp
-        run: npm install -g @google/clasp@2.4.2
+        run: npm install -g @google/clasp@3.3.0
       - name: clasp push → Apps Script
         working-directory: gas
         env:
@@ -27,5 +27,5 @@ jobs:
             exit 0
           fi
           printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
-          clasp push -f
+          clasp push --force
           echo "✓ pushed to Apps Script"
