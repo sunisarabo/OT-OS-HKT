@@ -1337,30 +1337,35 @@ function _phParseDate_(ds) {
   const m = String(ds).match(/^(\d{4})-(\d{2})-(\d{2})$/);
   return m ? new Date(+m[1], +m[2] - 1, +m[3]) : null;
 }
+// แปลงวันที่เป็น yyyy-MM-dd แบบเร็ว (ไม่เรียก Utilities.formatDate — กัน timeout ในลูป)
+function _phYmd_(d) {
+  const m = d.getMonth() + 1, day = d.getDate();
+  return d.getFullYear() + '-' + (m < 10 ? '0' + m : m) + '-' + (day < 10 ? '0' + day : day);
+}
 function _applyHolidaySubstitute_(records, PH) {
   if (!records || !records.length || !PH) return;
   const byEmp = {};
-  records.forEach(function (r) {
-    const id = r.empId || r.empName;
-    if (!id || !r.date) return;
+  for (let i = 0; i < records.length; i++) {
+    const r = records[i], id = r.empId || r.empName;
+    if (!id || !r.date) continue;
     (byEmp[id] = byEmp[id] || []).push(r);
-  });
+  }
+  const phList = [];
+  PH.forEach(function (h) { phList.push(h); });
   Object.keys(byEmp).forEach(function (id) {
-    const byDate = {};
-    byEmp[id].forEach(function (r) { byDate[formatDate(r.date, 'yyyy-MM-dd')] = r; });
-    PH.forEach(function (hStr) {
-      const hr = byDate[hStr];
-      if (hr && hr.status === 'WORKING' && hr.otHrs > 0) { hr.otCategory = 'PH'; return; } // ทำงานวันนักขัตฤกษ์
+    const arr = byEmp[id], byDate = {};
+    for (let j = 0; j < arr.length; j++) byDate[_phYmd_(arr[j].date)] = arr[j];
+    for (let p = 0; p < phList.length; p++) {
+      const hStr = phList[p], hr = byDate[hStr];
+      if (hr && hr.status === 'WORKING' && hr.otHrs > 0) { hr.otCategory = 'PH'; continue; }
       const hd = _phParseDate_(hStr);
-      if (!hd) return;
+      if (!hd) continue;
       for (let k = 1; k <= 21; k++) {
-        const d = new Date(hd.getFullYear(), hd.getMonth(), hd.getDate() + k);
-        const rr = byDate[formatDate(d, 'yyyy-MM-dd')];
+        const rr = byDate[_phYmd_(new Date(hd.getFullYear(), hd.getMonth(), hd.getDate() + k))];
         if (!rr) continue;
-        if (rr.status === 'SICK' || rr.status === 'VAC') break;            // ลาคั่น → void
-        if (rr.status === 'WORKING') { if (rr.otHrs > 0) rr.otCategory = 'PH'; break; } // on-duty วันแรก
-        // OFF → เลื่อนไปวันถัดไป
+        if (rr.status === 'SICK' || rr.status === 'VAC') break;
+        if (rr.status === 'WORKING') { if (rr.otHrs > 0) rr.otCategory = 'PH'; break; }
       }
-    });
+    }
   });
 }
