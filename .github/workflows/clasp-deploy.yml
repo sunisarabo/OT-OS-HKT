@@ -30,13 +30,3 @@ jobs:
           printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
           clasp --version
           clasp push --force
-      - name: Redeploy web app (update /exec)
-        working-directory: gas
-        continue-on-error: true
-        env:
-          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
-        shell: bash
-        run: |
-          if [ -z "$CLASPRC_JSON" ]; then echo "no secret, skip"; exit 0; fi
-          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
-          clasp deploy --deploymentId "AKfycbxyiEYq_U7fdaPQ_6tUbMg4iApdejjl3ns5wSvUuN1jeRvKDSmizjJ28zVLFSk3iQxgHg" --description "auto $(date -u +%FT%TZ)" || echo "::warning::clasp deploy failed (ตรวจ flag/permission) — โค้ดอัปเดตแล้วแต่ /exec ยังเวอร์ชันเก่า ใช้ /dev ได้"
