@@ -1,5 +1,6 @@
 name: Deploy to Apps Script (clasp)
 
+# push เข้า repo (ไฟล์ใน gas/ เปลี่ยน) → clasp push เข้าโปรเจกต์ OT อัตโนมัติ
 on:
   push:
     branches: [ main, claude/confident-lamport-4lqfh5 ]
@@ -22,12 +23,10 @@ jobs:
           CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
         shell: bash
         run: |
-          set +e
-          if [ -z "$CLASPRC_JSON" ]; then echo "::warning::no CLASPRC_JSON secret"; exit 0; fi
-          echo "clasp version: $(clasp --version 2>&1)"
+          if [ -z "$CLASPRC_JSON" ]; then
+            echo "::warning::ยังไม่ได้ตั้ง secret CLASPRC_JSON — ข้าม (ดู gas/CLASP_AUTODEPLOY.md)"
+            exit 0
+          fi
           printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
-          echo "rc size: $(wc -c < "$HOME/.clasprc.json") bytes"
-          node -e "try{const c=require(require('os').homedir()+'/.clasprc.json');console.log('TOP KEYS:',JSON.stringify(Object.keys(c)));for(const k of Object.keys(c)){if(c[k]&&typeof c[k]==='object'){console.log(' '+k+':',JSON.stringify(Object.keys(c[k])));for(const k2 of Object.keys(c[k])){if(c[k][k2]&&typeof c[k][k2]==='object')console.log('   '+k+'.'+k2+':',JSON.stringify(Object.keys(c[k][k2])));}}}}catch(e){console.log('PARSE ERROR:',e.message)}"
-          echo "--- clasp push ---"
-          clasp push --force 2>&1
-          echo "clasp push exit code: $?"
+          clasp --version
+          clasp push --force
