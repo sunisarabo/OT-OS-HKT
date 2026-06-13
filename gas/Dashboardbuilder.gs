@@ -28,11 +28,11 @@ function buildDashboardPayload(period, startDate, endDate) {
     teams: cfg.TEAMS.map(function(t){
       const o = ot.byTeam[t.code] || { before: 0, after: 0, dayoff: 0, ph: 0, all: 0 };
       return {
-        code: t.code, name: t.name, dept: t.dept,
+        code: t.code, name: t.name, dept: dept3ForTeam_(t.code),
         headcount: summary.byTeam[t.code] || t.headcount,
         before: o.before, after: o.after, dayoff: o.dayoff, ph: o.ph, all: o.all
       };
-    }),
+    }).sort(function(a,b){ var R={KP:0,LP:1,LL:2}; return (R[a.dept]==null?9:R[a.dept])-(R[b.dept]==null?9:R[b.dept]); }),
     overLimit:    ot.overLimit || [],
     byDate:       ot.byDate || {},
     topEarners:   ot.topEarners || [],
@@ -176,7 +176,8 @@ function _dashboardHTML(payload) {
     <label>แผนก:</label>
     <select id="filterDept">
       <option value="ALL">ทั้งหมด</option>
-      <option value="PSA">PSA — การโดยสาร</option>
+      <option value="KP">KP — การโดยสาร</option>
+      <option value="LP">LP — บริการผู้โดยสารพิเศษ</option>
       <option value="LL">LL — ติดตามสัมภาระ</option>
     </select>
     <label>ทีม:</label>
@@ -388,7 +389,7 @@ function renderTables() {
     if (t.dept !== lastDept) {
       const r = document.createElement('tr');
       r.className = 'dept-hdr';
-      const lbl = t.dept === 'PSA' ? '── การโดยสาร (PSA) ──' : '── ติดตามสัมภาระ (LL) ──';
+      const lbl = ({KP:'── KP — การโดยสาร ──',LP:'── LP — บริการผู้โดยสารพิเศษ ──',LL:'── LL — ติดตามสัมภาระ ──'})[t.dept] || ('── '+t.dept+' ──');
       r.innerHTML = '<td colspan="9">' + lbl + '</td>';
       tbodyT.appendChild(r);
       lastDept = t.dept;
@@ -442,7 +443,7 @@ function renderEmployee() {
     if (t.dept !== lastDept) {
       const r = document.createElement('tr');
       r.className = 'dept-hdr';
-      const lbl = t.dept === 'PSA' ? '── การโดยสาร (PSA) ──' : '── ติดตามสัมภาระ (LL) ──';
+      const lbl = ({KP:'── KP — การโดยสาร ──',LP:'── LP — บริการผู้โดยสารพิเศษ ──',LL:'── LL — ติดตามสัมภาระ ──'})[t.dept] || ('── '+t.dept+' ──');
       r.innerHTML = '<td colspan="3">' + lbl + '</td>';
       tbT.appendChild(r);
       lastDept = t.dept;

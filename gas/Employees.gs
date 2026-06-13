@@ -385,3 +385,21 @@ function removeNightlyTrigger3() {
     if (tr.getHandlerFunction() === 'nightlyPrecache3') ScriptApp.deleteTrigger(tr);
   });
 }
+
+/** ติดตั้ง trigger รายชั่วโมง: เติมเดือนที่ขาดชั่วโมงละ 1 เดือน แล้วลบตัวเองเมื่อครบ (backfill อัตโนมัติ) */
+function installHourlyBackfillTrigger3() {
+  removeHourlyBackfillTrigger3();
+  ScriptApp.newTrigger('hourlyBackfill3').timeBased().everyHours(1).create();
+  Logger.log('ติดตั้ง hourlyBackfill3 — เติมเดือนที่ขาดชั่วโมงละ 1 เดือน จนครบแล้วลบตัวเอง');
+}
+function removeHourlyBackfillTrigger3() {
+  ScriptApp.getProjectTriggers().forEach(function (tr) {
+    if (tr.getHandlerFunction() === 'hourlyBackfill3') ScriptApp.deleteTrigger(tr);
+  });
+}
+function hourlyBackfill3() {
+  var miss = _emp3MissingMonths_();
+  if (!miss.length) { removeHourlyBackfillTrigger3(); Logger.log('backfill ครบทุกเดือนแล้ว — ลบ trigger'); return; }
+  precacheMonth3(miss[0]);
+  if (_emp3MissingMonths_().length === 0) removeHourlyBackfillTrigger3();
+}

@@ -172,57 +172,6 @@ function _addKPIRow(body, ot, flights, summary, hasData) {
   body.appendParagraph(''); // spacer
 }
 
-function _addOTByTeam(body, ot, summary, cfg) {
-  _h2(body, 'OT แยกรายทีม');
-
-  // Build rows — group by dept (PSA → LL)
-  const rows = [['ทีม', 'พนักงาน', 'ก่อนชิฟ', 'หลังชิฟ', 'วันหยุด', 'นักขัตฤกษ์', 'รวม (ชม.)']];
-  let total  = { hc: 0, before: 0, after: 0, dayoff: 0, ph: 0, all: 0 };
-  let psaTotal = { hc: 0, all: 0 }, llTotal = { hc: 0, all: 0 };
-  let lastDept = '';
-
-  cfg.TEAMS.forEach(function(t) {
-    if (t.dept !== lastDept) {
-      const deptLabel = t.dept === 'PSA' ? '── การโดยสาร (PSA) ──' : '── ติดตามสัมภาระ (LL) ──';
-      rows.push([deptLabel, '', '', '', '', '', '']);
-      lastDept = t.dept;
-    }
-    const teamOT = ot.byTeam[t.code] || { before: 0, after: 0, dayoff: 0, ph: 0, all: 0 };
-    const hc = summary.byTeam[t.code] || t.headcount;
-    rows.push([
-      t.name, String(hc),
-      teamOT.before.toFixed(1), teamOT.after.toFixed(1),
-      teamOT.dayoff.toFixed(1), teamOT.ph.toFixed(1),
-      teamOT.all.toFixed(1)
-    ]);
-    total.hc += hc; total.before += teamOT.before; total.after += teamOT.after;
-    total.dayoff += teamOT.dayoff; total.ph += teamOT.ph; total.all += teamOT.all;
-    if (t.dept === 'PSA') { psaTotal.hc += hc; psaTotal.all += teamOT.all; }
-    else                  { llTotal.hc  += hc; llTotal.all  += teamOT.all; }
-  });
-
-  rows.push([
-    'รวม', String(total.hc),
-    total.before.toFixed(1), total.after.toFixed(1),
-    total.dayoff.toFixed(1), total.ph.toFixed(1),
-    total.all.toFixed(1)
-  ]);
-
-  const tbl = body.appendTable(rows);
-  _styleDataTable(tbl, true, [false, true, true, true, true, true, true]); // 'num' alignment
-
-  // Highlight dept-header rows
-  for (let r = 1; r < rows.length - 1; r++) {
-    if (rows[r][0].indexOf('──') !== -1) {
-      tbl.getRow(r).getCell(0).setBackgroundColor(COLOR_ORANGE_SOFT);
-      _setText(tbl.getRow(r).getCell(0).getChild(0).asParagraph(),
-        { FONT_FAMILY: FONT_THAI, FONT_SIZE: 9, BOLD: true, ITALIC: true, FOREGROUND_COLOR: COLOR_ORANGE });
-      // merge across all 7 columns by styling other cells matching
-      for (let c = 1; c < 7; c++) tbl.getRow(r).getCell(c).setBackgroundColor(COLOR_ORANGE_SOFT);
-    }
-  }
-}
-
 function _addOverLimitSection(body, overLimit, cfg) {
   if (!overLimit || overLimit.length === 0) {
     const ok = body.appendParagraph('✓ ไม่พบพนักงาน OT เกิน ' + cfg.WEEKLY_OT_CAP_HOURS +
@@ -324,56 +273,6 @@ function _addFlightSection(body, flights) {
         { FONT_FAMILY: FONT_THAI, FONT_SIZE: 9, BOLD: true });
     }
   }
-}
-
-function _addEmployeeBreakdown(body, summary, cfg) {
-  body.appendPageBreak();
-  _h2(body, 'จำนวนพนักงานปัจจุบัน (จากชีต Summary)');
-
-  // ─ (A) by Team — sorted by dept ─
-  const teamLabel = body.appendParagraph('แยกตามทีม');
-  _setText(teamLabel, { FONT_FAMILY: FONT_THAI, FONT_SIZE: 11, BOLD: true, FOREGROUND_COLOR: COLOR_NAVY });
-
-  const teamRows = [['ทีม', 'แผนก', 'จำนวน']];
-  let lastDept = '';
-  let teamTotal = 0;
-  cfg.TEAMS.forEach(function(t) {
-    if (t.dept !== lastDept) {
-      const deptLabel = t.dept === 'PSA' ? '── การโดยสาร (PSA) ──' : '── ติดตามสัมภาระ (LL) ──';
-      teamRows.push([deptLabel, '', '']);
-      lastDept = t.dept;
-    }
-    const n = summary.byTeam[t.code] || 0;
-    teamRows.push([t.name, t.dept, String(n)]);
-    teamTotal += n;
-  });
-  teamRows.push(['รวม', '', String(teamTotal)]);
-
-  const teamTbl = body.appendTable(teamRows);
-  _styleDataTable(teamTbl, true, [false, false, true]);
-  for (let r = 1; r < teamRows.length - 1; r++) {
-    if (teamRows[r][0].indexOf('──') !== -1) {
-      [0, 1, 2].forEach(function(c){
-        teamTbl.getRow(r).getCell(c).setBackgroundColor(COLOR_ORANGE_SOFT);
-      });
-      _setText(teamTbl.getRow(r).getCell(0).getChild(0).asParagraph(),
-        { FONT_FAMILY: FONT_THAI, FONT_SIZE: 9, BOLD: true, ITALIC: true, FOREGROUND_COLOR: COLOR_ORANGE });
-    }
-  }
-
-  body.appendParagraph('');
-
-  // ─ (B) by Position ─
-  const posLabel = body.appendParagraph('แยกตามตำแหน่ง');
-  _setText(posLabel, { FONT_FAMILY: FONT_THAI, FONT_SIZE: 11, BOLD: true, FOREGROUND_COLOR: COLOR_NAVY });
-
-  const posRows = [['ตำแหน่ง', 'จำนวน']];
-  (summary.positions || []).forEach(function(p) {
-    posRows.push([p, String(summary.byPosition[p] || 0)]);
-  });
-  posRows.push(['รวม', String(summary.total)]);
-  const posTbl = body.appendTable(posRows);
-  _styleDataTable(posTbl, true, [false, true]);
 }
 
 function _addFooter(doc, cfg, dashboardUrl) {
@@ -483,4 +382,106 @@ function _filename(period, start, end) {
   if (period === 'weekly')  return 'OT_Weekly_'  + code + '_' + formatDate(start, 'yyyy-MM-dd') + '_to_' + formatDate(end, 'yyyy-MM-dd') + '.pdf';
   if (period === 'monthly') return 'OT_Monthly_' + code + '_' + formatDate(start, 'yyyy-MM') + '.pdf';
   return 'OT_Report_' + code + '_' + formatDate(start, 'yyyy-MM-dd') + '.pdf';
+}
+
+// ===== 3 แผนก KP/LP/LL (แทน _addOTByTeam/_addEmployeeBreakdown เดิม) =====
+var DEPT3_LABEL_ = {
+  KP: '── KP — การโดยสาร ──',
+  LP: '── LP — บริการผู้โดยสารพิเศษ ──',
+  LL: '── LL — ติดตามสัมภาระ ──'
+};
+var DEPT3_ORDER_ = ['KP', 'LP', 'LL'];
+
+function _addOTByTeam(body, ot, summary, cfg) {
+  _h2(body, 'OT แยกรายทีม (KP / LP / LL)');
+
+  var rows = [['ทีม', 'พนักงาน', 'ก่อนชิฟ', 'หลังชิฟ', 'วันหยุด', 'นักขัตฤกษ์', 'รวม (ชม.)']];
+  var total = { hc: 0, before: 0, after: 0, dayoff: 0, ph: 0, all: 0 };
+
+  DEPT3_ORDER_.forEach(function (dep) {
+    rows.push([DEPT3_LABEL_[dep], '', '', '', '', '', '']);
+    var depTeams = cfg.TEAMS.filter(function (t) { return dept3ForTeam_(t.code) === dep; });
+    var sub = { hc: 0, all: 0 };
+    depTeams.forEach(function (t) {
+      var o = ot.byTeam[t.code] || { before: 0, after: 0, dayoff: 0, ph: 0, all: 0 };
+      var hc = summary.byTeam[t.code] || t.headcount;
+      rows.push([t.name, String(hc),
+        o.before.toFixed(1), o.after.toFixed(1), o.dayoff.toFixed(1), o.ph.toFixed(1), o.all.toFixed(1)]);
+      total.hc += hc; total.before += o.before; total.after += o.after;
+      total.dayoff += o.dayoff; total.ph += o.ph; total.all += o.all;
+      sub.hc += hc; sub.all += o.all;
+    });
+    rows.push(['  รวม ' + dep, String(sub.hc), '', '', '', '', sub.all.toFixed(1)]);
+  });
+
+  rows.push(['รวมทั้งหมด', String(total.hc),
+    total.before.toFixed(1), total.after.toFixed(1),
+    total.dayoff.toFixed(1), total.ph.toFixed(1), total.all.toFixed(1)]);
+
+  var tbl = body.appendTable(rows);
+  _styleDataTable(tbl, true, [false, true, true, true, true, true, true]);
+
+  for (var r = 1; r < rows.length - 1; r++) {
+    if (rows[r][0].indexOf('──') !== -1) {                 // dept header
+      for (var c = 0; c < 7; c++) tbl.getRow(r).getCell(c).setBackgroundColor(COLOR_ORANGE_SOFT);
+      _setText(tbl.getRow(r).getCell(0).getChild(0).asParagraph(),
+        { FONT_FAMILY: FONT_THAI, FONT_SIZE: 9, BOLD: true, ITALIC: true, FOREGROUND_COLOR: COLOR_ORANGE });
+    } else if (rows[r][0].indexOf('  รวม ') === 0) {        // dept subtotal
+      for (var c2 = 0; c2 < 7; c2++) tbl.getRow(r).getCell(c2).setBackgroundColor(COLOR_NAVY_LIGHT);
+      _setText(tbl.getRow(r).getCell(0).getChild(0).asParagraph(),
+        { FONT_FAMILY: FONT_THAI, FONT_SIZE: 9, BOLD: true, FOREGROUND_COLOR: COLOR_NAVY });
+    }
+  }
+}
+
+function _addEmployeeBreakdown(body, summary, cfg) {
+  body.appendPageBreak();
+  _h2(body, 'จำนวนพนักงานปัจจุบัน (จากชีต Summary)');
+
+  // ─ (A) by Team — จัดกลุ่ม KP / LP / LL ─
+  var teamLabel = body.appendParagraph('แยกตามทีม (KP / LP / LL)');
+  _setText(teamLabel, { FONT_FAMILY: FONT_THAI, FONT_SIZE: 11, BOLD: true, FOREGROUND_COLOR: COLOR_NAVY });
+
+  var teamRows = [['ทีม', 'แผนก', 'จำนวน']];
+  var teamTotal = 0;
+  DEPT3_ORDER_.forEach(function (dep) {
+    teamRows.push([DEPT3_LABEL_[dep], '', '']);
+    var depTeams = cfg.TEAMS.filter(function (t) { return dept3ForTeam_(t.code) === dep; });
+    var sub = 0;
+    depTeams.forEach(function (t) {
+      var n = summary.byTeam[t.code] || 0;
+      teamRows.push([t.name, dep, String(n)]);
+      teamTotal += n; sub += n;
+    });
+    teamRows.push(['  รวม ' + dep, '', String(sub)]);
+  });
+  teamRows.push(['รวมทั้งหมด', '', String(teamTotal)]);
+
+  var teamTbl = body.appendTable(teamRows);
+  _styleDataTable(teamTbl, true, [false, false, true]);
+  for (var r = 1; r < teamRows.length - 1; r++) {
+    if (teamRows[r][0].indexOf('──') !== -1) {
+      [0, 1, 2].forEach(function (c) { teamTbl.getRow(r).getCell(c).setBackgroundColor(COLOR_ORANGE_SOFT); });
+      _setText(teamTbl.getRow(r).getCell(0).getChild(0).asParagraph(),
+        { FONT_FAMILY: FONT_THAI, FONT_SIZE: 9, BOLD: true, ITALIC: true, FOREGROUND_COLOR: COLOR_ORANGE });
+    } else if (teamRows[r][0].indexOf('  รวม ') === 0) {
+      [0, 1, 2].forEach(function (c) { teamTbl.getRow(r).getCell(c).setBackgroundColor(COLOR_NAVY_LIGHT); });
+      _setText(teamTbl.getRow(r).getCell(0).getChild(0).asParagraph(),
+        { FONT_FAMILY: FONT_THAI, FONT_SIZE: 9, BOLD: true, FOREGROUND_COLOR: COLOR_NAVY });
+    }
+  }
+
+  body.appendParagraph('');
+
+  // ─ (B) by Position — เหมือนเดิม ─
+  var posLabel = body.appendParagraph('แยกตามตำแหน่ง');
+  _setText(posLabel, { FONT_FAMILY: FONT_THAI, FONT_SIZE: 11, BOLD: true, FOREGROUND_COLOR: COLOR_NAVY });
+
+  var posRows = [['ตำแหน่ง', 'จำนวน']];
+  (summary.positions || []).forEach(function (p) {
+    posRows.push([p, String(summary.byPosition[p] || 0)]);
+  });
+  posRows.push(['รวม', String(summary.total)]);
+  var posTbl = body.appendTable(posRows);
+  _styleDataTable(posTbl, true, [false, true]);
 }
