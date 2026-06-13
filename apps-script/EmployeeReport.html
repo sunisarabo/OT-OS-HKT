@@ -44,6 +44,7 @@ tr:hover td{background:var(--soft)}.tot td{font-weight:600;background:var(--soft
   </div>
   <div class="actions">
     <select id="month" onchange="loadMonth()"></select>
+    <a class="btn" id="dashLink" target="_top" href="#" style="text-decoration:none">📊 Dashboard ภาพรวม</a>
     <button class="btn" onclick="exportCsv()">⬇ Export CSV</button>
     <button class="btn" onclick="window.print()">🖨 Print / PDF</button>
     <span class="sub" id="meta" style="margin-left:auto"></span>
@@ -165,6 +166,10 @@ function exportCsv(){
 
 buildMonthSelect();
 buildDeptBar();
+// ลิงก์กลับหน้า Dashboard ภาพรวม (ใช้ getWebAppUrl จาก Webapp.gs)
+if(typeof google!=='undefined'&&google.script&&google.script.run){
+  google.script.run.withSuccessHandler(function(u){ if(u) document.getElementById('dashLink').href=u; }).getWebAppUrl();
+}
 loadMonth();
 </script>
 </body>
