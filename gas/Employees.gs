@@ -403,3 +403,108 @@ function hourlyBackfill3() {
   precacheMonth3(miss[0]);
   if (_emp3MissingMonths_().length === 0) removeHourlyBackfillTrigger3();
 }
+
+// ════════════════════════════════════════════════════════════════
+// PRECOMPUTE แบบ resumable (อ่านทีละสัปดาห์) — กัน "เกินเวลาประมวลผล"
+// แต่ละครั้งอ่าน ~7 วัน (~4 นาที) สะสมผลในไฟล์ progress จนครบเดือนแล้ว finalize
+// ════════════════════════════════════════════════════════════════
+function _emp3JsonRead_(name) {
+  var f = _emp3DriveFind_(name); if (!f) return null;
+  try { return JSON.parse(f.getBlob().getDataAsString()); } catch (e) { return null; }
+}
+function _emp3JsonSave_(name, obj) {
+  var s = JSON.stringify(obj), f = _emp3DriveFind_(name);
+  if (f) f.setContent(s); else DriveApp.createFile(name, s, 'application/json');
+}
+/** สะสม 1 record ลง acc (flat map: mk|dept|empId → {weeks,total,...}) */
+function _emp3AccRecord_(acc, monthOrder, r, master) {
+  var hrs = +r.otHrs || 0; if (hrs <= 0 || !r.date) return;
+  var d = (r.date instanceof Date) ? r.date : new Date(r.date); if (isNaN(d)) return;
+  var teamCode = resolveTeamCode_(r, master);
+  var dept = dept3ForTeam_(teamCode);
+  var mk = EMP3_MON_ABBR[d.getMonth()] + ' ' + d.getFullYear();
+  monthOrder[mk] = d.getFullYear() * 100 + d.getMonth();
+  var wi = emp3WeekIndex_(d.getDate());
+  var empId = r.empId || r.empName || '?';
+  var key = mk + '|' + dept + '|' + empId;
+  var e = acc[key];
+  if (!e) e = acc[key] = { mk: mk, dept: dept, code: r.empId || '', name: r.empName || '', team: teamDisplayName_(teamCode), weeks: [0,0,0,0], total: 0 };
+  e.weeks[wi] += hrs; e.total += hrs;
+}
+/** สร้าง report object จาก acc (เหมือน output ของ getEmployeeReport3) */
+function _emp3BuildReportFromAcc_(acc, monthOrder) {
+  var report = {};
+  Object.keys(acc).forEach(function (key) {
+    var e = acc[key];
+    if (!report[e.mk]) report[e.mk] = {};
+    if (!report[e.mk][e.dept]) report[e.mk][e.dept] = { total_hrs: 0, headcount: 0, teams: {}, employees: [] };
+    var b = report[e.mk][e.dept];
+    b.employees.push({ code: e.code, name: e.name, team: e.team,
+      weeks: e.weeks.map(function (x) { return Math.round(x * 10) / 10; }),
+      total_hrs: Math.round(e.total * 10) / 10 });
+    b.headcount += 1; b.total_hrs += e.total;
+    if (!b.teams[e.team]) b.teams[e.team] = { total_hrs: 0, headcount: 0 };
+    b.teams[e.team].total_hrs += e.total; b.teams[e.team].headcount += 1;
+  });
+  Object.keys(report).forEach(function (mk) {
+    DEPT3_DEFS.forEach(function (dd) {
+      var b = report[mk][dd.code]; if (!b) return;
+      b.employees.sort(function (a, z) { return z.total_hrs - a.total_hrs; });
+      b.total_hrs = Math.round(b.total_hrs * 10) / 10;
+      Object.keys(b.teams).forEach(function (t) { b.teams[t].total_hrs = Math.round(b.teams[t].total_hrs * 10) / 10; });
+    });
+  });
+  var months = Object.keys(monthOrder).sort(function (a, b) { return monthOrder[a] - monthOrder[b]; });
+  return { months: months, depts: DEPT3_DEFS, report: report, meta: { records: 0 } };
+}
+function _emp3Finalize_(mm, prog, progName) {
+  var data = _emp3BuildReportFromAcc_(prog.acc, prog.monthOrder);
+  _emp3DriveSave_(mm.key, data);
+  try { CacheService.getScriptCache().put('EMP3_' + mm.key, JSON.stringify(data).slice(0, 99000), 21600); } catch (e) {}
+  var f = _emp3DriveFind_(progName); if (f) f.setTrashed(true);
+  var first = data.months[0], r = first ? data.report[first] : {};
+  Logger.log('✓ FINAL ' + mm.key + ': KP ' + (((r.KP||{}).headcount)||0) + ' | LP ' + (((r.LP||{}).headcount)||0) + ' | LL ' + (((r.LL||{}).headcount)||0));
+  return { month: mm.key, done: true };
+}
+/** precompute เดือนแบบ resumable — เรียกซ้ำได้ แต่ละครั้งทำ 1 สัปดาห์ (~4 นาที) */
+function precacheMonthChunked(monthStr) {
+  var mm = _emp3Month_(monthStr);
+  var y = mm.start.getFullYear(), mo = mm.start.getMonth(), lastDay = mm.end.getDate();
+  var chunks = [[1, 7], [8, 14], [15, 21], [22, lastDay]];
+  var progName = '_EMP3_prog_' + mm.key + '.json';
+  var prog = _emp3JsonRead_(progName) || { next: 0, acc: {}, monthOrder: {} };
+  if (prog.next >= chunks.length) return _emp3Finalize_(mm, prog, progName);
+  var c = chunks[prog.next];
+  var cs = new Date(y, mo, c[0]), ce = new Date(y, mo, c[1]);
+  var master = getMasterEmployees();
+  var att = readAttendance(cs, ce) || [];
+  var ll = _readLLPivotRecords(cs, ce, master) || [];
+  var all = att.concat(ll);
+  for (var i = 0; i < all.length; i++) _emp3AccRecord_(prog.acc, prog.monthOrder, all[i], master);
+  prog.next++;
+  Logger.log('precacheMonthChunked ' + mm.key + ': chunk ' + prog.next + '/' + chunks.length + ' (วันที่ ' + c[0] + '-' + c[1] + ', +' + all.length + ' rec)');
+  if (prog.next >= chunks.length) return _emp3Finalize_(mm, prog, progName);
+  _emp3JsonSave_(progName, prog);
+  return { month: mm.key, chunk: prog.next, total: chunks.length, done: false };
+}
+/** ตัวขับ resumable แบบไม่ต้องใส่ argument — ทำเดือนที่ค้าง/ขาดทีละ 1 สัปดาห์ต่อการรัน */
+function chunkedTick3() {
+  var months = _emp3AllMonths_();           // ใหม่→เก่า
+  for (var i = 0; i < months.length; i++) {  // เดือนที่กำลังทำค้างอยู่ก่อน
+    if (_emp3DriveFind_('_EMP3_prog_' + months[i] + '.json')) return precacheMonthChunked(months[i]);
+  }
+  var miss = _emp3MissingMonths_();
+  if (!miss.length) { removeChunkedTrigger3(); Logger.log('✓ chunked backfill ครบทุกเดือนแล้ว'); return { allDone: true }; }
+  return precacheMonthChunked(miss[0]);
+}
+/** trigger ทุก 10 นาที: ทำ 1 สัปดาห์/รอบ จนครบทุกเดือนแล้วลบตัวเอง */
+function installChunkedBackfillTrigger3() {
+  removeChunkedTrigger3();
+  ScriptApp.newTrigger('chunkedTick3').timeBased().everyMinutes(10).create();
+  Logger.log('ติดตั้ง chunkedTick3 ทุก 10 นาที — backfill ทีละสัปดาห์จนครบแล้วลบตัวเอง');
+}
+function removeChunkedTrigger3() {
+  ScriptApp.getProjectTriggers().forEach(function (tr) {
+    if (tr.getHandlerFunction() === 'chunkedTick3') ScriptApp.deleteTrigger(tr);
+  });
+}
