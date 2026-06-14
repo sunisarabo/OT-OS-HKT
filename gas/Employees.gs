@@ -508,3 +508,17 @@ function removeChunkedTrigger3() {
     if (tr.getHandlerFunction() === 'chunkedTick3') ScriptApp.deleteTrigger(tr);
   });
 }
+
+/** ล้าง cache + progress ของทุกเดือน (ไฟล์เก่า/ไม่สมบูรณ์) → ให้ chunkedTick3/trigger สร้างใหม่ทั้งหมด */
+function clearAllEmployee3Cache() {
+  var months = _emp3AllMonths_(), n = 0;
+  months.forEach(function (mk) {
+    [_emp3CacheName_(mk), '_EMP3_prog_' + mk + '.json'].forEach(function (nm) {
+      var f = _emp3DriveFind_(nm);
+      if (f) { f.setTrashed(true); n++; }
+    });
+  });
+  try { CacheService.getScriptCache().removeAll(months.map(function (m) { return 'EMP3_' + m; })); } catch (e) {}
+  Logger.log('ล้าง cache/progress ' + n + ' ไฟล์ — รัน chunkedTick3 หรือรอ trigger เพื่อสร้างใหม่ให้ครบ');
+  return { cleared: n };
+}
