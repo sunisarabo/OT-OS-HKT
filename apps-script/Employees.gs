@@ -27,6 +27,8 @@ var EMP3_MON_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct'
 // ไฟล์ OT ของ LL (pivot รายคนรายวัน — ชีต "PA") — ใช้แทน roster รายวันที่ระบบเดิมหาไม่เจอ
 // ⚠️ ต้องแชร์ไฟล์นี้ให้บัญชีที่รัน Web App ด้วย
 var LL_OT_FILE_ID = '1i2c41P5zzHrvvzpJp7RJ9IT349fbWbk4jJMeb0lD5jE';
+// ไฟล์ OT Yearly (pivot รายคนรายวัน PSA, ต.ค.2025–พ.ค.2026) — ใช้แทน assignment ที่ขาดบางทีม
+var OT_YEARLY_FILE_ID = '1zESOKHDpNqbkXxd3YV0EqVHv6JDeyPjKKpjwJsOMVQ0';
 
 /** teamCode (Config) -> 'KP' | 'LP' | 'LL' */
 function dept3ForTeam_(teamCode) {
@@ -82,10 +84,16 @@ function emp3WeekIndex_(day) {
  * @returns {months:[], depts:[], report:{}, meta:{}}
  */
 function getEmployeeReport3(startDate, endDate, attendanceOpt) {
-  var attendance = attendanceOpt || readAttendance(startDate, endDate);
   var master = getMasterEmployees();
-  var llRecs = _readLLPivotRecords(startDate, endDate, master);   // LL จากไฟล์ pivot แยก
-  if (llRecs && llRecs.length) attendance = (attendance || []).concat(llRecs);
+  var attendance;
+  if (attendanceOpt) {
+    attendance = attendanceOpt;
+  } else {
+    var psaY = _readPSAYearlyRecords(startDate, endDate, master);                 // OT Yearly (PSA)
+    var basePsa = (psaY && psaY.length) ? psaY : (readAttendance(startDate, endDate) || []); // ไม่มีใน OT Yearly → roster
+    var llRecs = _readLLPivotRecords(startDate, endDate, master);                 // LL pivot
+    attendance = basePsa.concat(llRecs || []);
+  }
   var report = {};
   var monthOrder = {};
   var seenEmp = {};
@@ -477,7 +485,8 @@ function precacheMonthChunked(monthStr) {
   var c = chunks[prog.next];
   var cs = new Date(y, mo, c[0]), ce = new Date(y, mo, c[1]);
   var master = getMasterEmployees();
-  var att = readAttendance(cs, ce) || [];
+  var psaY = _readPSAYearlyRecords(cs, ce, master);
+  var att = (psaY && psaY.length) ? psaY : (readAttendance(cs, ce) || []);
   var ll = _readLLPivotRecords(cs, ce, master) || [];
   var all = att.concat(ll);
   for (var i = 0; i < all.length; i++) _emp3AccRecord_(prog.acc, prog.monthOrder, all[i], master);
@@ -521,4 +530,54 @@ function clearAllEmployee3Cache() {
   try { CacheService.getScriptCache().removeAll(months.map(function (m) { return 'EMP3_' + m; })); } catch (e) {}
   Logger.log('ล้าง cache/progress ' + n + ' ไฟล์ — รัน chunkedTick3 หรือรอ trigger เพื่อสร้างใหม่ให้ครบ');
   return { cleared: n };
+}
+
+// ════════════════════════════════════════════════════════════════
+// PSA OT จากไฟล์ OT Yearly (pivot รายคนรายวัน) — เลือกชีตที่มีคอลัมน์วันที่มากสุด
+// header: ... | รหัสพนักงาน | ชื่อ - สกุล | ... | DD/MM/YYYY-shift/Hrs (ค่าอยู่คอลัมน์นั้นเลย)
+// team มาจาก master (empId→teamCode) → จัด KP/LP ภายหลัง
+// ════════════════════════════════════════════════════════════════
+function _readPSAYearlyRecords(start, end, master) {
+  var out = [];
+  if (!OT_YEARLY_FILE_ID) return out;
+  try {
+    var ss = SpreadsheetApp.openById(OT_YEARLY_FILE_ID);
+    var sheets = ss.getSheets();
+    var best = null, bestCols = null, bestHdr = -1, bestCode = -1, bestName = -1, bestN = 0;
+    for (var i = 0; i < sheets.length; i++) {
+      var v = sheets[i].getDataRange().getValues();
+      for (var r = 0; r < Math.min(20, v.length); r++) {
+        var row = v[r], codeCol = -1, nameCol = -1;
+        for (var c = 0; c < row.length; c++) {
+          var cell = String(row[c] || '');
+          if (cell.trim() === 'รหัสพนักงาน') codeCol = c;
+          if (cell.indexOf('ชื่อ - สกุล') >= 0 || cell.indexOf('ชื่อ-สกุล') >= 0) nameCol = c;
+        }
+        if (codeCol < 0 || nameCol < 0) continue;
+        var dcols = [];
+        for (var c2 = 0; c2 < row.length; c2++) {
+          var m = String(row[c2] || '').match(/(\d{1,2})\/(\d{1,2})\/(\d{4})-\d+\/Hrs/);
+          if (m) dcols.push({ hrsCol: c2, date: new Date(+m[3], +m[2] - 1, +m[1]) });
+        }
+        if (dcols.length > bestN) { bestN = dcols.length; best = v; bestCols = dcols; bestHdr = r; bestCode = codeCol; bestName = nameCol; }
+        break;
+      }
+    }
+    if (!best || bestN <= 0) return out;
+    var s2 = _emp3Strip_(start), e2 = _emp3Strip_(end);
+    for (var rr = bestHdr + 1; rr < best.length; rr++) {
+      var code = String(best[rr][bestCode] == null ? '' : best[rr][bestCode]).split('.')[0].trim();
+      if (!/^\d{6,8}$/.test(code)) continue;
+      var name = String(best[rr][bestName] || '').trim();
+      var me = (master && master.byId) ? master.byId[code] : null;
+      var team = (me && me.teamCode) ? me.teamCode : '';
+      for (var k = 0; k < bestCols.length; k++) {
+        var d = bestCols[k].date;
+        if (d < s2 || d > e2) continue;
+        var hrs = _llHrs_(best[rr][bestCols[k].hrsCol]);
+        if (hrs > 0) out.push({ date: d, empId: code, empName: name, team: team, otHrs: hrs });
+      }
+    }
+  } catch (e) { Logger.log('PSA Yearly read failed: ' + e.message); }
+  return out;
 }
