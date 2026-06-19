@@ -22,6 +22,8 @@ function doGet(e) {
   e = e || {};
   const params = e.parameter || {};
   if (params.view === 'employees') return renderEmployeeReportPage_();
+  // เปิด /exec เปล่า ๆ → หน้ารายชื่อ (เร็ว เพราะอ่าน cache) แทน Dashboard (ที่อ่าน roster สด ช้า)
+  if (!params.period && !params.date && !params.start && !params.end && !params.month) return renderEmployeeReportPage_();
   let period = params.period || 'daily';
   let startDate, endDate;
 
