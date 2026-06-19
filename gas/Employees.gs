@@ -166,14 +166,24 @@ function getEmployeeReport3ForClient(monthStr, force, quickOnly) {
     var dv = _emp3DriveRead_(mm.key);
     if (dv) { try { var s0 = JSON.stringify(dv); if (s0.length < 95000) cache.put(ckey, s0, 21600); } catch (e) {} return dv; }
   }
-  // ยังไม่ precompute → ไม่คำนวณสด (กันหน้าเว็บค้าง 15 นาที) แจ้งให้ไป precache
+  // ยังไม่มี cache → ลองคำนวณสดจาก OT Yearly (เร็ว ~วินาที สำหรับเดือนเก่า) แล้ว cache ไว้
+  var master = getMasterEmployees();
+  var psaY = _readPSAYearlyRecords(mm.start, mm.end, master);
+  if (psaY && psaY.length) {
+    var ll = _readLLPivotRecords(mm.start, mm.end, master) || [];
+    var data = getEmployeeReport3(mm.start, mm.end, psaY.concat(ll));
+    try { _emp3DriveSave_(mm.key, data); } catch (e) {}
+    try { var s = JSON.stringify(data); if (s.length < 95000) cache.put(ckey, s, 21600); } catch (e) {}
+    return data;
+  }
+  // OT Yearly ไม่มีเดือนนี้ (เช่น เดือนปัจจุบัน) → roster ช้า → ต้อง precache ก่อน
   if (quickOnly && !force) {
     return { notReady: true, month: mm.key, months: [], depts: DEPT3_DEFS, report: {}, meta: { records: 0 } };
   }
-  var data = getEmployeeReport3(mm.start, mm.end);
-  try { _emp3DriveSave_(mm.key, data); } catch (e) {}
-  try { var s = JSON.stringify(data); if (s.length < 95000) cache.put(ckey, s, 21600); } catch (e) {}
-  return data;
+  var data2 = getEmployeeReport3(mm.start, mm.end);
+  try { _emp3DriveSave_(mm.key, data2); } catch (e) {}
+  try { var s2 = JSON.stringify(data2); if (s2.length < 95000) cache.put(ckey, s2, 21600); } catch (e) {}
+  return data2;
 }
 
 /** รันใน Editor ครั้งเดียวต่อเดือน (Workspace จำกัด 30 นาที พอ) → เก็บผลไว้ให้หน้าเว็บอ่านเร็ว */
