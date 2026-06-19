@@ -44,11 +44,17 @@ tr:hover td{background:var(--soft)}.tot td{font-weight:600;background:var(--soft
   </div>
   <div class="actions">
     <select id="month" onchange="loadMonth()"></select>
+    <span style="font-size:12px;color:var(--txt2)">หรือช่วง:</span>
+    <input type="date" id="from" class="btn" style="cursor:text">
+    <span style="font-size:12px;color:var(--txt2)">ถึง</span>
+    <input type="date" id="to" class="btn" style="cursor:text">
+    <button class="btn" onclick="loadRange()" style="background:#e6f1fb;color:#185fa5;border-color:#85b7eb">📥 ดึงข้อมูล</button>
     <a class="btn" id="dashLink" target="_top" href="#" style="text-decoration:none">📊 Dashboard ภาพรวม</a>
     <button class="btn" onclick="exportCsv()">⬇ Export CSV</button>
     <button class="btn" onclick="window.print()">🖨 Print / PDF</button>
     <span class="sub" id="meta" style="margin-left:auto"></span>
   </div>
+  <div id="monthchips" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px"></div>
   <div class="metrics" id="metrics" style="display:none"></div>
   <div id="content"></div>
 </div>
@@ -86,18 +92,34 @@ function loadMonth(){
     document.getElementById('content').innerHTML='<div class="card empty">✗ '+(e&&e.message||e)+'</div>';
   }).getEmployeeReport3ForClient(mk, false, true);
 }
-function onData(d){
+function chips(){var months=(DATA&&DATA.months)||[];var mc=document.getElementById('monthchips');
+  mc.innerHTML=(months.length>1)?months.map(function(m){return '<button class="btn" style="'+(m===curLabel?'background:#1a1a18;color:#fff':'')+'" onclick="pickMonth(\''+m+'\')">'+m+'</button>';}).join(''):'';}
+function pickMonth(m){curLabel=m;chips();render();}
+function applyResult(d, defLabel){
   DATA=d;
-  var mk=document.getElementById('month').value, lbl=mkLabel(mk);
-  curLabel=lbl;
+  if(d && d.error){document.getElementById('monthchips').innerHTML='';document.getElementById('metrics').style.display='none';document.getElementById('content').innerHTML='<div class="card empty">✗ '+d.error+'</div>';return;}
   if(d && d.notReady){
+    document.getElementById('monthchips').innerHTML='';
     document.getElementById('metrics').style.display='none';
     document.getElementById('meta').textContent='';
-    document.getElementById('content').innerHTML='<div class="card empty">เดือน '+lbl+' ยังไม่ได้ประมวลผล<br><br>ให้รัน <b>precacheNextMissing3</b> (หรือ <b>precacheMonth3</b>) ใน Apps Script Editor ก่อน — หรือรอ trigger รายคืนเติมให้อัตโนมัติ</div>';
+    document.getElementById('content').innerHTML='<div class="card empty">'+(d.month||'')+' ยังไม่ได้ประมวลผล (เดือนปัจจุบันต้องรัน precacheMonth3 ก่อน)</div>';
     return;
   }
+  var months=(d&&d.months)||[];
+  curLabel=(defLabel && months.indexOf(defLabel)>=0)?defLabel:(months[months.length-1]||defLabel||'');
+  chips();
   document.getElementById('meta').textContent='records: '+((d.meta&&d.meta.records)||0)+(d.cached?' · cached':'');
   render();
+}
+function onData(d){ applyResult(d, mkLabel(document.getElementById('month').value)); }
+function loadRange(){
+  var f=document.getElementById('from').value, t=document.getElementById('to').value;
+  if(!f||!t){alert('เลือกวันที่ จาก–ถึง ก่อน');return;}
+  document.getElementById('content').innerHTML='<div class="card empty"><span class="spin"></span> กำลังดึงข้อมูลช่วง '+f+' ถึง '+t+'...</div>';
+  document.getElementById('metrics').style.display='none';document.getElementById('monthchips').innerHTML='';
+  google.script.run.withSuccessHandler(function(d){applyResult(d,null);})
+    .withFailureHandler(function(e){document.getElementById('content').innerHTML='<div class="card empty">✗ '+(e&&e.message||e)+'</div>';})
+    .getEmployeeReport3ForRange(f,t);
 }
 var curLabel='';
 function mkLabel(mk){var p=mk.split('-');return MONTH_ABBR[(+p[1])-1]+' '+p[0];}

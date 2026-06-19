@@ -591,3 +591,17 @@ function _readPSAYearlyRecords(start, end, master) {
   } catch (e) { Logger.log('PSA Yearly read failed: ' + e.message); }
   return out;
 }
+/** รายงานตามช่วงวันที่ (จาก–ถึง) — ใช้ OT Yearly (เร็ว) คืน report ที่ key ตามเดือนในช่วง */
+function getEmployeeReport3ForRange(startStr, endStr) {
+  var sm = String(startStr || '').match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  var em = String(endStr || '').match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (!sm || !em) return { error: 'รูปแบบวันที่ไม่ถูกต้อง', months: [], depts: DEPT3_DEFS, report: {}, meta: { records: 0 } };
+  var s = new Date(+sm[1], +sm[2] - 1, +sm[3]), e = new Date(+em[1], +em[2] - 1, +em[3]);
+  var key = 'EMP3R_' + startStr + '_' + endStr;
+  var cache = CacheService.getScriptCache();
+  var hit = cache.get(key);
+  if (hit) { try { var o = JSON.parse(hit); o.cached = true; return o; } catch (x) {} }
+  var data = getEmployeeReport3(s, e);
+  try { var js = JSON.stringify(data); if (js.length < 95000) cache.put(key, js, 21600); } catch (x) {}
+  return data;
+}
