@@ -27,8 +27,10 @@ var EMP3_MON_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct'
 // ไฟล์ OT ของ LL (pivot รายคนรายวัน — ชีต "PA") — ใช้แทน roster รายวันที่ระบบเดิมหาไม่เจอ
 // ⚠️ ต้องแชร์ไฟล์นี้ให้บัญชีที่รัน Web App ด้วย
 var LL_OT_FILE_ID = '1i2c41P5zzHrvvzpJp7RJ9IT349fbWbk4jJMeb0lD5jE';
-// ไฟล์ OT Yearly (pivot รายคนรายวัน PSA, ต.ค.2025–พ.ค.2026) — ใช้แทน assignment ที่ขาดบางทีม
-var OT_YEARLY_FILE_ID = '1zESOKHDpNqbkXxd3YV0EqVHv6JDeyPjKKpjwJsOMVQ0';
+// แหล่ง OT หลักของระบบ = "OT Weekly" (Google Sheet, pivot รายคนรายวัน มีค่าจริง)
+// (OT Yearly เดิม 1zESOKHDpNqbk... เป็น template ว่างเปล่า จึงไม่ใช้)
+// ⚠️ ต้องแชร์ไฟล์นี้ให้บัญชีที่รัน Web App ด้วย
+var OT_YEARLY_FILE_ID = '1EcONsdNUiy73ZfEAU978eKOMBN3u0qDmyYrRBlEm8EU';
 
 /** teamCode (Config) -> 'KP' | 'LP' | 'LL' */
 function dept3ForTeam_(teamCode) {
